@@ -1,0 +1,35 @@
+-- Job: ps_qa_inputs
+-- Path: ROOT/filterbuy_dw/dwh/jobs/production_schedule_v4/data_loaders
+-- Component: Error #4
+-- Type: SQL Query
+-- Job ID: 4320593
+-- Component ID: 4322343
+
+with base_distribution_centers as (
+    select 'New Kensington, PA' as mapped_distribution_location union all
+    select 'Ogden, UT' union all
+    select 'Fresno, CA' union all
+    select 'Talladega, AL (Pope)' union all
+    select 'Talladega, AL (Newberry)' union all
+    select 'Dallas, TX' union all
+    select 'Orlando, FL' union all
+    select 'Elgin, IL'
+)
+
+, base_manufacturing_locations as (
+    select 'New Kensington, PA' as mapped_manufacturing_location union all
+    select 'Ogden, UT' union all
+    select 'Talladega, AL (Pope)' union all
+    select 'Talladega, AL (Newberry)' union all
+    select 'Talladega, AL (Woodland)'
+)
+
+select
+    bdc.mapped_distribution_location || ' distribution center not mapped to any non-automated inventory target' as error_type
+from base_distribution_centers bdc
+    left join base_manufacturing_locations bml on bdc.mapped_distribution_location = bml.mapped_manufacturing_location
+    left join ${stg2_schema}.ps_target_days_of_inventory ps on ps.mapped_distribution_location = bdc.mapped_distribution_location
+        and grouped_line_type = 'Excess Distribution'
+where bml.mapped_manufacturing_location is null
+group by 1
+having count(distinct ps.filter_type) = 0

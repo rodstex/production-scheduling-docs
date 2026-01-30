@@ -1,0 +1,1637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Production Scheduling Tool - Overview</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        :root {
+            --input-color: #3b82f6;
+            --input-bg: #dbeafe;
+            --calc-color: #eab308;
+            --calc-bg: #fef9c3;
+            --output-color: #22c55e;
+            --output-bg: #dcfce7;
+            --guard-color: #ef4444;
+            --guard-bg: #fee2e2;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-600: #4b5563;
+            --gray-800: #1f2937;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%);
+            min-height: 100vh;
+            color: var(--gray-800);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            text-align: center;
+            padding: 2rem 0 3rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            color: var(--gray-800);
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            color: var(--gray-600);
+        }
+
+        .view-toggle {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+
+        .toggle-btn {
+            padding: 0.75rem 1.5rem;
+            border: 2px solid var(--gray-200);
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .toggle-btn:hover {
+            border-color: var(--input-color);
+        }
+
+        .toggle-btn.active {
+            background: var(--input-color);
+            color: white;
+            border-color: var(--input-color);
+        }
+
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .legend-dot {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+        }
+
+        .legend-dot.input { background: var(--input-color); }
+        .legend-dot.calc { background: var(--calc-color); }
+        .legend-dot.output { background: var(--output-color); }
+        .legend-dot.guard { background: var(--guard-color); }
+
+        /* Flow Diagram Section */
+        .flow-section {
+            background: white;
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+        }
+
+        .flow-container {
+            display: grid;
+            grid-template-columns: 1fr 1.5fr 1fr;
+            gap: 2rem;
+            align-items: start;
+        }
+
+        .flow-column {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .flow-column h2 {
+            text-align: center;
+            padding: 0.75rem;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .flow-column.inputs h2 {
+            background: var(--input-bg);
+            color: var(--input-color);
+        }
+
+        .flow-column.calculations h2 {
+            background: var(--calc-bg);
+            color: var(--calc-color);
+        }
+
+        .flow-column.outputs h2 {
+            background: var(--output-bg);
+            color: var(--output-color);
+        }
+
+        .flow-card {
+            background: white;
+            border: 2px solid var(--gray-200);
+            border-radius: 12px;
+            padding: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .flow-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px -4px rgba(0,0,0,0.15);
+        }
+
+        .flow-card.input { border-left: 4px solid var(--input-color); }
+        .flow-card.calc { border-left: 4px solid var(--calc-color); }
+        .flow-card.output { border-left: 4px solid var(--output-color); }
+        .flow-card.guard { border-left: 4px solid var(--guard-color); }
+
+        .flow-card h3 {
+            font-size: 1rem;
+            margin-bottom: 0.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .flow-card p {
+            font-size: 0.85rem;
+            color: var(--gray-600);
+        }
+
+        .flow-card .details {
+            display: none;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--gray-200);
+            font-size: 0.85rem;
+        }
+
+        .flow-card.expanded .details {
+            display: block;
+        }
+
+        .flow-card .expand-icon {
+            position: absolute;
+            right: 1rem;
+            top: 1rem;
+            font-size: 0.8rem;
+            color: var(--gray-600);
+        }
+
+        /* Arrows between columns */
+        .arrow-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            color: var(--gray-600);
+        }
+
+        /* Detailed Sections */
+        .section {
+            background: white;
+            border-radius: 16px;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .section-header {
+            padding: 1.25rem 1.5rem;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.3s ease;
+        }
+
+        .section-header:hover {
+            background: var(--gray-100);
+        }
+
+        .section-header h2 {
+            font-size: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .section-header .badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .section.inputs .badge { background: var(--input-bg); color: var(--input-color); }
+        .section.calculations .badge { background: var(--calc-bg); color: var(--calc-color); }
+        .section.outputs .badge { background: var(--output-bg); color: var(--output-color); }
+        .section.guardrails .badge { background: var(--guard-bg); color: var(--guard-color); }
+
+        .section-content {
+            display: none;
+            padding: 0 1.5rem 1.5rem;
+        }
+
+        .section.expanded .section-content {
+            display: block;
+        }
+
+        .chevron {
+            transition: transform 0.3s ease;
+        }
+
+        .section.expanded .chevron {
+            transform: rotate(180deg);
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .info-card {
+            background: var(--gray-100);
+            border-radius: 10px;
+            padding: 1.25rem;
+        }
+
+        .info-card h4 {
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .info-card p {
+            font-size: 0.9rem;
+            color: var(--gray-600);
+        }
+
+        .info-card ul {
+            margin-top: 0.5rem;
+            margin-left: 1.25rem;
+            font-size: 0.9rem;
+            color: var(--gray-600);
+        }
+
+        .info-card li {
+            margin-bottom: 0.25rem;
+        }
+
+        /* Process Steps */
+        .process-steps {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .step {
+            display: flex;
+            gap: 1rem;
+            align-items: flex-start;
+        }
+
+        .step-number {
+            width: 36px;
+            height: 36px;
+            background: var(--calc-color);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .step-content {
+            flex: 1;
+            background: var(--gray-100);
+            padding: 1rem;
+            border-radius: 10px;
+        }
+
+        .step-content h4 {
+            margin-bottom: 0.25rem;
+        }
+
+        .step-content p {
+            font-size: 0.9rem;
+            color: var(--gray-600);
+        }
+
+        /* Analogy Box */
+        .analogy-box {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border-radius: 10px;
+            padding: 1.25rem;
+            margin-top: 1rem;
+            border-left: 4px solid var(--calc-color);
+        }
+
+        .analogy-box h4 {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Guardrail Cards */
+        .guardrail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .guardrail-card {
+            background: var(--guard-bg);
+            border-radius: 10px;
+            padding: 1.25rem;
+            border-left: 4px solid var(--guard-color);
+        }
+
+        .guardrail-card h4 {
+            color: var(--guard-color);
+            margin-bottom: 0.5rem;
+        }
+
+        /* Mermaid Diagram */
+        .mermaid-container {
+            margin: 2rem 0;
+            overflow-x: auto;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--gray-600);
+            font-size: 0.9rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .flow-container {
+                grid-template-columns: 1fr;
+            }
+
+            .arrow-container {
+                transform: rotate(90deg);
+                padding: 1rem 0;
+            }
+        }
+
+        /* Print Styles */
+        @media print {
+            body {
+                background: white;
+            }
+
+            .toggle-btn, .view-toggle {
+                display: none;
+            }
+
+            .section-content {
+                display: block !important;
+            }
+
+            .flow-card .details {
+                display: block !important;
+            }
+        }
+
+        /* Tooltip */
+        .tooltip {
+            position: relative;
+        }
+
+        .tooltip::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--gray-800);
+            color: white;
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            z-index: 100;
+        }
+
+        .tooltip:hover::after {
+            opacity: 1;
+        }
+
+        /* View modes */
+        .detailed-only {
+            display: block;
+        }
+
+        .flowchart-only {
+            display: none;
+        }
+
+        body.flowchart-view .detailed-only,
+        body.flowchart-view .flow-section {
+            display: none;
+        }
+
+        body.flowchart-view .flowchart-only {
+            display: block;
+        }
+
+        /* Flowchart Styles */
+        .flowchart-container {
+            background: white;
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+        }
+
+        .flowchart-title {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .flowchart-title h2 {
+            font-size: 1.5rem;
+            color: var(--gray-800);
+        }
+
+        .flowchart-title p {
+            color: var(--gray-600);
+            margin-top: 0.5rem;
+        }
+
+        .flowchart {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0;
+        }
+
+        .flow-phase {
+            width: 100%;
+            max-width: 900px;
+            margin-bottom: 1rem;
+        }
+
+        .phase-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            padding: 0.5rem 0;
+        }
+
+        .phase-number {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+            font-size: 1.1rem;
+            flex-shrink: 0;
+        }
+
+        .phase-number.input { background: var(--input-color); }
+        .phase-number.calc { background: var(--calc-color); }
+        .phase-number.guard { background: var(--guard-color); }
+        .phase-number.output { background: var(--output-color); }
+
+        .phase-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .phase-time {
+            font-size: 0.8rem;
+            color: var(--gray-600);
+            margin-left: auto;
+            background: var(--gray-100);
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+        }
+
+        .phase-content {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            padding-left: 56px;
+        }
+
+        .flow-item {
+            background: var(--gray-100);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            border-left: 3px solid transparent;
+        }
+
+        .flow-item.input { border-left-color: var(--input-color); background: var(--input-bg); }
+        .flow-item.calc { border-left-color: var(--calc-color); background: var(--calc-bg); }
+        .flow-item.guard { border-left-color: var(--guard-color); background: var(--guard-bg); }
+        .flow-item.output { border-left-color: var(--output-color); background: var(--output-bg); }
+
+        .flow-arrow {
+            display: flex;
+            justify-content: center;
+            padding: 0.5rem 0;
+            padding-left: 56px;
+        }
+
+        .flow-arrow svg {
+            color: var(--gray-400);
+        }
+
+        .flow-connector {
+            width: 2px;
+            height: 30px;
+            background: var(--gray-300);
+            margin-left: 75px;
+        }
+
+        .phase-description {
+            padding-left: 56px;
+            margin-top: 0.75rem;
+            font-size: 0.9rem;
+            color: var(--gray-600);
+            font-style: italic;
+        }
+
+        /* Substeps within a phase */
+        .substeps {
+            padding-left: 56px;
+            margin-top: 0.75rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .substep {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 0.9rem;
+        }
+
+        .substep-marker {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: var(--gray-200);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--gray-600);
+            flex-shrink: 0;
+        }
+
+        .substep.active .substep-marker {
+            background: var(--calc-color);
+            color: white;
+        }
+
+        /* Decision diamond */
+        .decision-box {
+            background: white;
+            border: 2px solid var(--calc-color);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 0.5rem 0;
+            position: relative;
+        }
+
+        .decision-box::before {
+            content: "?";
+            position: absolute;
+            top: -10px;
+            left: 20px;
+            background: var(--calc-color);
+            color: white;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.8rem;
+        }
+
+        .decision-branches {
+            display: flex;
+            gap: 1rem;
+            margin-top: 0.75rem;
+        }
+
+        .branch {
+            flex: 1;
+            background: var(--gray-100);
+            border-radius: 6px;
+            padding: 0.75rem;
+            text-align: center;
+            font-size: 0.85rem;
+        }
+
+        .branch-label {
+            font-weight: 600;
+            font-size: 0.75rem;
+            color: var(--gray-600);
+            margin-bottom: 0.25rem;
+        }
+
+        /* Timeline indicator */
+        .timeline-bar {
+            position: absolute;
+            left: 75px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(to bottom,
+                var(--input-color) 0%,
+                var(--input-color) 20%,
+                var(--calc-color) 20%,
+                var(--calc-color) 70%,
+                var(--output-color) 70%,
+                var(--output-color) 100%
+            );
+        }
+
+        /* Summary box */
+        .flow-summary {
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-top: 2rem;
+            text-align: center;
+        }
+
+        .flow-summary h3 {
+            margin-bottom: 1rem;
+            color: var(--gray-800);
+        }
+
+        .summary-metrics {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .metric {
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--input-color);
+        }
+
+        .metric-label {
+            font-size: 0.8rem;
+            color: var(--gray-600);
+        }
+
+        @media (max-width: 768px) {
+            .phase-content {
+                padding-left: 0;
+            }
+            .flow-arrow, .flow-connector, .substeps, .phase-description {
+                padding-left: 0;
+                margin-left: 0;
+            }
+            .flow-connector {
+                margin-left: 19px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Production Scheduling Tool</h1>
+            <p class="subtitle">How Filterbuy decides what to manufacture, where, and when</p>
+        </header>
+
+        <div class="view-toggle">
+            <button class="toggle-btn active" onclick="setView('detailed')">Detailed View</button>
+            <button class="toggle-btn" onclick="setView('flowchart')">Flowchart View</button>
+            <button class="toggle-btn" onclick="window.print()">Print / Export PDF</button>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-dot input"></div>
+                <span>Data Inputs</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot calc"></div>
+                <span>Calculations</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot output"></div>
+                <span>Outputs</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot guard"></div>
+                <span>Guardrails</span>
+            </div>
+        </div>
+
+        <!-- Flowchart View (Sequential Process) -->
+        <div class="flowchart-only">
+            <div class="flowchart-container">
+                <div class="flowchart-title">
+                    <h2>Production Scheduling Process Flow</h2>
+                    <p>How the daily production schedule is generated, step by step</p>
+                </div>
+
+                <div class="flowchart">
+
+                    <!-- PHASE 1: Data Collection -->
+                    <div class="flow-phase">
+                        <div class="phase-header">
+                            <div class="phase-number input">1</div>
+                            <div class="phase-title">Collect Input Data</div>
+                            <div class="phase-time">Daily @ ETL Start</div>
+                        </div>
+                        <div class="phase-content">
+                            <div class="flow-item input">📦 Current Inventory Levels</div>
+                            <div class="flow-item input">📈 Sales & Demand Forecast</div>
+                            <div class="flow-item input">👥 Staffing Availability</div>
+                            <div class="flow-item input">⚙️ Configuration Parameters</div>
+                            <div class="flow-item input">🏭 Location Capabilities</div>
+                        </div>
+                        <p class="phase-description">System pulls fresh data from warehouse, sales, and HR systems</p>
+                    </div>
+
+                    <div class="flow-connector"></div>
+
+                    <!-- PHASE 2: Calculate Need -->
+                    <div class="flow-phase">
+                        <div class="phase-header">
+                            <div class="phase-number calc">2</div>
+                            <div class="phase-title">Calculate Days of Inventory</div>
+                            <div class="phase-time">Step 1 of 6</div>
+                        </div>
+                        <div class="substeps">
+                            <div class="substep">
+                                <div class="substep-marker">a</div>
+                                <span>For each SKU: <strong>Days Remaining = Current Stock ÷ Daily Demand</strong></span>
+                            </div>
+                            <div class="substep">
+                                <div class="substep-marker">b</div>
+                                <span>Compare to target (30 days) → Identify products below target</span>
+                            </div>
+                        </div>
+                        <div class="phase-content" style="margin-top: 0.75rem;">
+                            <div class="flow-item calc">🧮 Days of Inventory per SKU</div>
+                            <div class="flow-item calc">📉 Gap vs Target Inventory</div>
+                        </div>
+                    </div>
+
+                    <div class="flow-connector"></div>
+
+                    <!-- PHASE 3: Calculate Production Need -->
+                    <div class="flow-phase">
+                        <div class="phase-header">
+                            <div class="phase-number calc">3</div>
+                            <div class="phase-title">Determine Production Need</div>
+                            <div class="phase-time">Step 2 of 6</div>
+                        </div>
+                        <div class="substeps">
+                            <div class="substep">
+                                <div class="substep-marker">a</div>
+                                <span><strong>Production Need = (Target Days × Daily Demand) - Current Stock</strong></span>
+                            </div>
+                            <div class="substep">
+                                <div class="substep-marker">b</div>
+                                <span>Split by MERV rating (8, 11, 13, Odor Eliminator)</span>
+                            </div>
+                        </div>
+                        <div class="phase-content" style="margin-top: 0.75rem;">
+                            <div class="flow-item calc">🎯 Units to Produce per SKU</div>
+                        </div>
+                    </div>
+
+                    <div class="flow-connector"></div>
+
+                    <!-- PHASE 4: Ranking -->
+                    <div class="flow-phase">
+                        <div class="phase-header">
+                            <div class="phase-number calc">4</div>
+                            <div class="phase-title">Rank Products by Priority</div>
+                            <div class="phase-time">Step 3 of 6</div>
+                        </div>
+                        <div class="substeps">
+                            <div class="substep">
+                                <div class="substep-marker">a</div>
+                                <span>Sort by days of inventory (lowest first = most urgent)</span>
+                            </div>
+                            <div class="substep">
+                                <div class="substep-marker">b</div>
+                                <span>Rank separately for each manufacturing location</span>
+                            </div>
+                        </div>
+                        <div class="phase-content" style="margin-top: 0.75rem;">
+                            <div class="flow-item calc">🏆 Priority Ranking per Location</div>
+                        </div>
+                    </div>
+
+                    <div class="flow-connector"></div>
+
+                    <!-- PHASE 5: Route to Line Type (Decision) -->
+                    <div class="flow-phase">
+                        <div class="phase-header">
+                            <div class="phase-number calc">5</div>
+                            <div class="phase-title">Route to Production Line Type</div>
+                            <div class="phase-time">Step 4 of 6</div>
+                        </div>
+                        <div class="substeps">
+                            <div class="decision-box">
+                                <strong>Decision: Which line type can produce this SKU?</strong>
+                                <div class="decision-branches">
+                                    <div class="branch" style="border-left: 3px solid var(--input-color);">
+                                        <div class="branch-label">AUTOMATED</div>
+                                        High-volume sizes<br>
+                                        Limited by tooling sets<br>
+                                        Max 2 lines per size
+                                    </div>
+                                    <div class="branch" style="border-left: 3px solid var(--calc-color);">
+                                        <div class="branch-label">NON-AUTOMATED</div>
+                                        Specialty sizes & overflow<br>
+                                        Split: Reactive vs Proactive<br>
+                                        Includes changeover time
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flow-connector"></div>
+
+                    <!-- PHASE 6: Allocate Capacity -->
+                    <div class="flow-phase">
+                        <div class="phase-header">
+                            <div class="phase-number calc">6</div>
+                            <div class="phase-title">Allocate Production Lines</div>
+                            <div class="phase-time">Step 5 of 6</div>
+                        </div>
+                        <div class="substeps">
+                            <div class="substep">
+                                <div class="substep-marker">a</div>
+                                <span>Start with highest priority product</span>
+                            </div>
+                            <div class="substep">
+                                <div class="substep-marker">b</div>
+                                <span>Calculate lines needed: <strong>Units ÷ Line Capacity</strong></span>
+                            </div>
+                            <div class="substep">
+                                <div class="substep-marker">c</div>
+                                <span>Track cumulative lines used vs staffing available</span>
+                            </div>
+                            <div class="substep">
+                                <div class="substep-marker">d</div>
+                                <span>Repeat until staffing exhausted or all products scheduled</span>
+                            </div>
+                        </div>
+                        <div class="phase-content" style="margin-top: 0.75rem;">
+                            <div class="flow-item calc">📊 Lines Allocated per Product</div>
+                            <div class="flow-item calc">📈 Cumulative Capacity Used</div>
+                        </div>
+                    </div>
+
+                    <div class="flow-connector"></div>
+
+                    <!-- PHASE 7: Apply Guardrails -->
+                    <div class="flow-phase">
+                        <div class="phase-header">
+                            <div class="phase-number guard">7</div>
+                            <div class="phase-title">Apply Constraints & Guardrails</div>
+                            <div class="phase-time">Step 6 of 6</div>
+                        </div>
+                        <div class="phase-content">
+                            <div class="flow-item guard">👥 Staffing Cap Check</div>
+                            <div class="flow-item guard">🔧 Tooling Sets Check</div>
+                            <div class="flow-item guard">⏱️ Min Production Run</div>
+                            <div class="flow-item guard">📏 Max Lines per Size</div>
+                        </div>
+                        <div class="substeps" style="margin-top: 0.75rem;">
+                            <div class="decision-box">
+                                <strong>Validation: Is this schedule feasible?</strong>
+                                <div class="decision-branches">
+                                    <div class="branch" style="border-left: 3px solid var(--output-color);">
+                                        <div class="branch-label">✅ WITHIN CAPACITY</div>
+                                        Mark as schedulable<br>
+                                        Include in production plan
+                                    </div>
+                                    <div class="branch" style="border-left: 3px solid var(--guard-color);">
+                                        <div class="branch-label">⚠️ EXCEEDS CAPACITY</div>
+                                        Flag as "Threshold Exceeded"<br>
+                                        Defer to next cycle
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flow-connector"></div>
+
+                    <!-- PHASE 8: Generate Outputs -->
+                    <div class="flow-phase">
+                        <div class="phase-header">
+                            <div class="phase-number output">8</div>
+                            <div class="phase-title">Generate Production Schedule</div>
+                            <div class="phase-time">Output</div>
+                        </div>
+                        <div class="phase-content">
+                            <div class="flow-item output">📋 Tomorrow's Schedule</div>
+                            <div class="flow-item output">📅 Future Schedule (Lookahead)</div>
+                            <div class="flow-item output">⚠️ Threshold Exceeded List</div>
+                        </div>
+                        <p class="phase-description">Schedule written to data warehouse for consumption</p>
+                    </div>
+
+                    <div class="flow-connector"></div>
+
+                    <!-- PHASE 9: Publish -->
+                    <div class="flow-phase">
+                        <div class="phase-header">
+                            <div class="phase-number output">9</div>
+                            <div class="phase-title">Publish to Dashboard</div>
+                            <div class="phase-time">Available to Users</div>
+                        </div>
+                        <div class="phase-content">
+                            <div class="flow-item output">📊 QuickSight Dashboard Refresh</div>
+                            <div class="flow-item output">📈 Operations Team Views</div>
+                            <div class="flow-item output">🔔 Alerts & Notifications</div>
+                        </div>
+                        <p class="phase-description">SPICE data refreshes, dashboard shows current schedule</p>
+                    </div>
+
+                    <!-- Summary -->
+                    <div class="flow-summary">
+                        <h3>Process Summary</h3>
+                        <div class="summary-metrics">
+                            <div class="metric">
+                                <div class="metric-value">5</div>
+                                <div class="metric-label">Input Sources</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-value">6</div>
+                                <div class="metric-label">Calculation Steps</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-value">4</div>
+                                <div class="metric-label">Guardrail Checks</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-value">3</div>
+                                <div class="metric-label">Output Types</div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Flow Diagram -->
+        <div class="flow-section">
+            <div class="flow-container">
+                <!-- INPUTS Column -->
+                <div class="flow-column inputs">
+                    <h2>DATA INPUTS</h2>
+
+                    <div class="flow-card input" onclick="toggleCard(this)">
+                        <span class="expand-icon">+</span>
+                        <h3>📦 Inventory Levels</h3>
+                        <p>Current stock by product and location</p>
+                        <div class="details">
+                            <strong>What it provides:</strong>
+                            <ul>
+                                <li>Units on hand per SKU</li>
+                                <li>Inventory by distribution center</li>
+                                <li>Stock across all MERV ratings</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="flow-card input" onclick="toggleCard(this)">
+                        <span class="expand-icon">+</span>
+                        <h3>📈 Demand Forecast</h3>
+                        <p>Expected sales and consumption rates</p>
+                        <div class="details">
+                            <strong>What it provides:</strong>
+                            <ul>
+                                <li>Daily sales velocity per SKU</li>
+                                <li>Seasonal demand patterns</li>
+                                <li>Distribution center requirements</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="flow-card input" onclick="toggleCard(this)">
+                        <span class="expand-icon">+</span>
+                        <h3>👥 Staffing Availability</h3>
+                        <p>Production lines that can be staffed</p>
+                        <div class="details">
+                            <strong>What it provides:</strong>
+                            <ul>
+                                <li>Available workers per shift</li>
+                                <li>Lines available by location</li>
+                                <li>Automated vs manual capacity</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="flow-card input" onclick="toggleCard(this)">
+                        <span class="expand-icon">+</span>
+                        <h3>⚙️ Configuration</h3>
+                        <p>Business rules and targets</p>
+                        <div class="details">
+                            <strong>What it provides:</strong>
+                            <ul>
+                                <li>Target days of inventory (30 days)</li>
+                                <li>Minimum production run times</li>
+                                <li>Maximum lines per product size</li>
+                                <li>Tooling set constraints</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="flow-card input" onclick="toggleCard(this)">
+                        <span class="expand-icon">+</span>
+                        <h3>🏭 Manufacturing Locations</h3>
+                        <p>Factory capabilities and equipment</p>
+                        <div class="details">
+                            <strong>Locations:</strong>
+                            <ul>
+                                <li><strong>Ogden, UT</strong> - Automated lines</li>
+                                <li><strong>New Kensington, PA</strong> - Automated + Manual</li>
+                                <li><strong>Talladega, AL</strong> - Multiple facilities (Newberry, Pope, Woodland, TMS)</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CALCULATIONS Column -->
+                <div class="flow-column calculations">
+                    <h2>PROCESSING & LOGIC</h2>
+
+                    <div class="flow-card calc" onclick="toggleCard(this)">
+                        <span class="expand-icon">+</span>
+                        <h3>1️⃣ Calculate Production Need</h3>
+                        <p>Determine how much to produce</p>
+                        <div class="details">
+                            <strong>Formula:</strong><br>
+                            <code>Production Need = (Target Days × Daily Demand) - Current Inventory</code>
+                            <br><br>
+                            <strong>Example:</strong> If target is 30 days, selling 100/day, and have 2,000 units:<br>
+                            Need = (30 × 100) - 2,000 = 1,000 units to produce
+                        </div>
+                    </div>
+
+                    <div class="flow-card calc" onclick="toggleCard(this)">
+                        <span class="expand-icon">+</span>
+                        <h3>2️⃣ Rank Products by Urgency</h3>
+                        <p>Prioritize what to make first</p>
+                        <div class="details">
+                            <strong>Ranking Factors:</strong>
+                            <ul>
+                                <li>Days of inventory remaining (lower = more urgent)</li>
+                                <li>Products below target get priority</li>
+                                <li>Separate ranking per manufacturing location</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="flow-card calc" onclick="toggleCard(this)">
+                        <span class="expand-icon">+</span>
+                        <h3>3️⃣ Route to Line Type</h3>
+                        <p>Automated vs Non-Automated assignment</p>
+                        <div class="details">
+                            <strong>Automated Lines:</strong>
+                            <ul>
+                                <li>High-volume, efficient production</li>
+                                <li>Limited by tooling sets per size</li>
+                                <li>Requires specific equipment setup</li>
+                            </ul>
+                            <strong>Non-Automated Lines:</strong>
+                            <ul>
+                                <li>Flexible, handles variety</li>
+                                <li>Split into Reactive (urgent) and Proactive (planned)</li>
+                                <li>Manual changeover between products</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="flow-card calc" onclick="toggleCard(this)">
+                        <span class="expand-icon">+</span>
+                        <h3>4️⃣ Allocate Production Lines</h3>
+                        <p>Assign capacity to products</p>
+                        <div class="details">
+                            <strong>Process:</strong>
+                            <ul>
+                                <li>Work through ranked products in order</li>
+                                <li>Assign lines until staffing exhausted</li>
+                                <li>Calculate changeover time between products</li>
+                                <li>Round to feasible production quantities</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="flow-card guard" onclick="toggleCard(this)">
+                        <span class="expand-icon">+</span>
+                        <h3>🛡️ Apply Guardrails</h3>
+                        <p>Enforce constraints and limits</p>
+                        <div class="details">
+                            <strong>Checks Applied:</strong>
+                            <ul>
+                                <li>✓ Within staffing capacity?</li>
+                                <li>✓ Tooling sets available?</li>
+                                <li>✓ Meets minimum run requirement?</li>
+                                <li>✓ Under max lines per size?</li>
+                            </ul>
+                            Items exceeding capacity are flagged for review.
+                        </div>
+                    </div>
+
+                    <div class="flow-card calc" onclick="toggleCard(this)">
+                        <span class="expand-icon">+</span>
+                        <h3>5️⃣ Generate Schedule</h3>
+                        <p>Create actionable production plan</p>
+                        <div class="details">
+                            <strong>Output includes:</strong>
+                            <ul>
+                                <li>Today's schedule (if running same-day)</li>
+                                <li>Tomorrow's schedule (primary output)</li>
+                                <li>Future schedule (lookahead)</li>
+                                <li>Quantities by MERV rating (8, 11, 13, OE)</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- OUTPUTS Column -->
+                <div class="flow-column outputs">
+                    <h2>OUTPUTS</h2>
+
+                    <div class="flow-card output" onclick="toggleCard(this)">
+                        <span class="expand-icon">+</span>
+                        <h3>📋 Production Schedule</h3>
+                        <p>Daily manufacturing instructions</p>
+                        <div class="details">
+                            <strong>Contains:</strong>
+                            <ul>
+                                <li>Which products to make</li>
+                                <li>Which location and line type</li>
+                                <li>Quantities per MERV rating</li>
+                                <li>Number of production lines</li>
+                                <li>Priority ranking</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="flow-card output" onclick="toggleCard(this)">
+                        <span class="expand-icon">+</span>
+                        <h3>📊 QuickSight Dashboard</h3>
+                        <p>Visual monitoring for operations</p>
+                        <div class="details">
+                            <strong>Views Available:</strong>
+                            <ul>
+                                <li>Schedule by location</li>
+                                <li>Capacity utilization</li>
+                                <li>Within capacity vs overflow</li>
+                                <li>Inventory days coverage</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="flow-card output" onclick="toggleCard(this)">
+                        <span class="expand-icon">+</span>
+                        <h3>⚠️ Threshold Exceeded List</h3>
+                        <p>Items that couldn't fit in capacity</p>
+                        <div class="details">
+                            <strong>Purpose:</strong>
+                            <ul>
+                                <li>Visibility into unmet demand</li>
+                                <li>Prioritization for next cycle</li>
+                                <li>Staffing planning input</li>
+                                <li>Capacity expansion signals</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="flow-card output" onclick="toggleCard(this)">
+                        <span class="expand-icon">+</span>
+                        <h3>📈 Performance Metrics</h3>
+                        <p>Tracking and reporting data</p>
+                        <div class="details">
+                            <strong>Metrics tracked:</strong>
+                            <ul>
+                                <li>Lines utilized vs available</li>
+                                <li>Products within target inventory</li>
+                                <li>Schedule adherence</li>
+                                <li>Changeover efficiency</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Detailed Sections -->
+        <div class="detailed-only">
+
+            <!-- Section 1: Inputs -->
+            <div class="section inputs expanded">
+                <div class="section-header" onclick="toggleSection(this.parentElement)">
+                    <h2>
+                        <span class="badge">INPUTS</span>
+                        What Feeds the System
+                    </h2>
+                    <svg class="chevron" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="section-content">
+                    <p>The scheduling tool pulls data from multiple sources to make informed production decisions:</p>
+
+                    <div class="info-grid">
+                        <div class="info-card">
+                            <h4>📦 Inventory Data</h4>
+                            <p>Real-time stock levels from the warehouse management system, broken down by:</p>
+                            <ul>
+                                <li>Filter size (e.g., 20x20x1, 20x25x1)</li>
+                                <li>MERV rating (8, 11, 13, Odor Eliminator)</li>
+                                <li>Distribution center location</li>
+                            </ul>
+                        </div>
+
+                        <div class="info-card">
+                            <h4>📈 Sales & Demand</h4>
+                            <p>Historical and forecasted consumption rates used to calculate how fast inventory depletes:</p>
+                            <ul>
+                                <li>Daily sales velocity</li>
+                                <li>Seasonal patterns</li>
+                                <li>Distribution center demand</li>
+                            </ul>
+                        </div>
+
+                        <div class="info-card">
+                            <h4>👥 Staffing Plans</h4>
+                            <p>Available workforce determines maximum production capacity:</p>
+                            <ul>
+                                <li>Lines staffed per location</li>
+                                <li>Shift schedules (Mon-Thu vs Fri-Sun)</li>
+                                <li>Automated vs manual line assignments</li>
+                            </ul>
+                        </div>
+
+                        <div class="info-card">
+                            <h4>⚙️ Business Configuration</h4>
+                            <p>Rules and targets that govern scheduling decisions:</p>
+                            <ul>
+                                <li><strong>Target inventory:</strong> 30 days coverage</li>
+                                <li><strong>Min run time:</strong> 10 hours per size</li>
+                                <li><strong>Max lines:</strong> 2 per product size</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="analogy-box">
+                        <h4>💡 Think of it like...</h4>
+                        <p>A restaurant deciding what to prep each morning. They check what's in the fridge (inventory), look at reservations (demand forecast), see how many cooks are working (staffing), and follow recipes that require minimum batch sizes (configuration).</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 2: Calculations -->
+            <div class="section calculations">
+                <div class="section-header" onclick="toggleSection(this.parentElement)">
+                    <h2>
+                        <span class="badge">LOGIC</span>
+                        How Decisions Are Made
+                    </h2>
+                    <svg class="chevron" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="section-content">
+                    <p>The scheduling engine follows a systematic process to create an optimal production plan:</p>
+
+                    <div class="process-steps">
+                        <div class="step">
+                            <div class="step-number">1</div>
+                            <div class="step-content">
+                                <h4>Calculate Days of Inventory</h4>
+                                <p>For each product, calculate how many days of stock remain by dividing current inventory by daily demand. Products with fewer days remaining are more urgent.</p>
+                            </div>
+                        </div>
+
+                        <div class="step">
+                            <div class="step-number">2</div>
+                            <div class="step-content">
+                                <h4>Determine Production Need</h4>
+                                <p>Calculate how much to produce to reach the target inventory level (typically 30 days). If current stock covers 15 days and target is 30, produce 15 days worth.</p>
+                            </div>
+                        </div>
+
+                        <div class="step">
+                            <div class="step-number">3</div>
+                            <div class="step-content">
+                                <h4>Rank by Priority</h4>
+                                <p>Sort all products by urgency within each manufacturing location. Products furthest below target get scheduled first.</p>
+                            </div>
+                        </div>
+
+                        <div class="step">
+                            <div class="step-number">4</div>
+                            <div class="step-content">
+                                <h4>Route to Line Type</h4>
+                                <p><strong>Automated lines</strong> handle high-volume standard sizes efficiently. <strong>Non-Automated lines</strong> handle specialty products and overflow, split between urgent (reactive) and planned (proactive) work.</p>
+                            </div>
+                        </div>
+
+                        <div class="step">
+                            <div class="step-number">5</div>
+                            <div class="step-content">
+                                <h4>Allocate Capacity</h4>
+                                <p>Assign production lines to ranked products until all available staffing is used. Track cumulative line usage to ensure we stay within capacity.</p>
+                            </div>
+                        </div>
+
+                        <div class="step">
+                            <div class="step-number">6</div>
+                            <div class="step-content">
+                                <h4>Apply Constraints</h4>
+                                <p>Enforce minimum production runs, maximum lines per size, and tooling limitations. Flag items that exceed available capacity.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 3: Guardrails -->
+            <div class="section guardrails">
+                <div class="section-header" onclick="toggleSection(this.parentElement)">
+                    <h2>
+                        <span class="badge">GUARDRAILS</span>
+                        Constraints & Limitations
+                    </h2>
+                    <svg class="chevron" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="section-content">
+                    <p>The system enforces several constraints to ensure feasible, efficient production:</p>
+
+                    <div class="guardrail-grid">
+                        <div class="guardrail-card">
+                            <h4>👥 Staffing Capacity</h4>
+                            <p>Cannot schedule more production lines than available workers can operate. This is a <strong>hard constraint</strong> - the system will never exceed it.</p>
+                        </div>
+
+                        <div class="guardrail-card">
+                            <h4>🔧 Tooling Sets</h4>
+                            <p>Each filter size requires specific tooling. Limited tooling sets mean we can't run unlimited lines of the same size simultaneously.</p>
+                        </div>
+
+                        <div class="guardrail-card">
+                            <h4>⏱️ Minimum Production Run</h4>
+                            <p>Don't produce less than 10 hours worth of product. Small batches are inefficient due to setup and changeover time.</p>
+                        </div>
+
+                        <div class="guardrail-card">
+                            <h4>📏 Maximum Lines per Size</h4>
+                            <p>Limit of 2 automated lines per product size to maintain flexibility and avoid over-concentration on single products.</p>
+                        </div>
+
+                        <div class="guardrail-card">
+                            <h4>✅ Capacity Validation</h4>
+                            <p>Each scheduled item is flagged as "within capacity" or "threshold exceeded" so operations knows what's achievable vs aspirational.</p>
+                        </div>
+
+                        <div class="guardrail-card">
+                            <h4>🔄 Changeover Time</h4>
+                            <p>Non-automated lines account for time needed to switch between products, reducing effective capacity but ensuring realistic schedules.</p>
+                        </div>
+                    </div>
+
+                    <div class="analogy-box" style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border-left-color: var(--guard-color);">
+                        <h4>⚠️ Known Limitations</h4>
+                        <ul>
+                            <li><strong>Single-day horizon:</strong> Optimizes for tomorrow only, doesn't consider multi-day batching</li>
+                            <li><strong>Staffing is fixed input:</strong> System doesn't recommend staffing changes, only works within given constraints</li>
+                            <li><strong>No demand uncertainty:</strong> Uses point forecasts, doesn't buffer for demand variability</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 4: Outputs -->
+            <div class="section outputs">
+                <div class="section-header" onclick="toggleSection(this.parentElement)">
+                    <h2>
+                        <span class="badge">OUTPUTS</span>
+                        What the System Produces
+                    </h2>
+                    <svg class="chevron" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="section-content">
+                    <p>The scheduling tool produces actionable plans and visibility tools:</p>
+
+                    <div class="info-grid">
+                        <div class="info-card">
+                            <h4>📋 Tomorrow's Production Schedule</h4>
+                            <p>The primary output - a detailed plan for what to manufacture:</p>
+                            <ul>
+                                <li>Products ranked by priority</li>
+                                <li>Quantities per MERV rating</li>
+                                <li>Assigned manufacturing location</li>
+                                <li>Line type (Automated/Manual)</li>
+                                <li>Number of lines allocated</li>
+                            </ul>
+                        </div>
+
+                        <div class="info-card">
+                            <h4>📊 QuickSight Dashboard</h4>
+                            <p>Interactive visualization for operations teams:</p>
+                            <ul>
+                                <li>Filter by location, line type, date</li>
+                                <li>See capacity utilization at a glance</li>
+                                <li>Identify bottlenecks and overflow</li>
+                                <li>Track inventory coverage trends</li>
+                            </ul>
+                        </div>
+
+                        <div class="info-card">
+                            <h4>⚠️ Threshold Exceeded Report</h4>
+                            <p>Items that couldn't fit within available capacity:</p>
+                            <ul>
+                                <li>Products needing attention</li>
+                                <li>Quantities that were deferred</li>
+                                <li>Signal for staffing decisions</li>
+                            </ul>
+                        </div>
+
+                        <div class="info-card">
+                            <h4>📈 Future Schedule</h4>
+                            <p>Lookahead for planning purposes:</p>
+                            <ul>
+                                <li>Multi-day view of production needs</li>
+                                <li>Helps with resource planning</li>
+                                <li>Early warning for capacity crunches</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 5: Monitoring -->
+            <div class="section">
+                <div class="section-header" onclick="toggleSection(this.parentElement)">
+                    <h2>
+                        <span class="badge" style="background: #e0e7ff; color: #4f46e5;">MONITORING</span>
+                        How to Know It's Working
+                    </h2>
+                    <svg class="chevron" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="section-content">
+                    <div class="info-grid">
+                        <div class="info-card">
+                            <h4>🔄 Daily Refresh</h4>
+                            <p>The schedule regenerates every day with fresh inventory and demand data. Check the "Data Effective Date" in QuickSight to confirm you're viewing current data.</p>
+                        </div>
+
+                        <div class="info-card">
+                            <h4>✅ Capacity Flags</h4>
+                            <p>Every scheduled item has an "Is Within Capacity" flag. If many items show FALSE, it indicates demand exceeds available production capacity.</p>
+                        </div>
+
+                        <div class="info-card">
+                            <h4>📉 Inventory Trends</h4>
+                            <p>Monitor "Days of Inventory" metrics. Consistent values near the target (30 days) indicate healthy scheduling. Declining values signal problems.</p>
+                        </div>
+
+                        <div class="info-card">
+                            <h4>🚨 Alerts to Watch</h4>
+                            <p>Red flags that need attention:</p>
+                            <ul>
+                                <li>Multiple products with &lt;10 days inventory</li>
+                                <li>High volume in "Threshold Exceeded"</li>
+                                <li>Stale data (check refresh timestamp)</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <footer>
+            <p>Production Scheduling Tool Documentation | Filterbuy | Last Updated: January 2026</p>
+            <p style="margin-top: 0.5rem; font-size: 0.8rem;">For technical details, see: <code>thoughts/handoffs/</code> in the production-scheduling-tool repository</p>
+        </footer>
+    </div>
+
+    <script>
+        // Initialize Mermaid
+        mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+
+        // Toggle card expansion
+        function toggleCard(card) {
+            card.classList.toggle('expanded');
+            const icon = card.querySelector('.expand-icon');
+            icon.textContent = card.classList.contains('expanded') ? '−' : '+';
+        }
+
+        // Toggle section expansion
+        function toggleSection(section) {
+            section.classList.toggle('expanded');
+        }
+
+        // Set view mode
+        function setView(mode) {
+            const buttons = document.querySelectorAll('.toggle-btn');
+            buttons.forEach(btn => btn.classList.remove('active'));
+
+            // Remove all view classes
+            document.body.classList.remove('flowchart-view');
+
+            if (mode === 'flowchart') {
+                document.body.classList.add('flowchart-view');
+                buttons[1].classList.add('active');
+            } else {
+                buttons[0].classList.add('active');
+            }
+        }
+
+        // Expand all cards for printing
+        window.onbeforeprint = function() {
+            document.querySelectorAll('.flow-card').forEach(card => {
+                card.classList.add('expanded');
+            });
+            document.querySelectorAll('.section').forEach(section => {
+                section.classList.add('expanded');
+            });
+        };
+    </script>
+</body>
+</html>

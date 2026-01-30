@@ -1,0 +1,15 @@
+# Credentials and secrets
+credentials.sh
+*.env
+.env*
+
+# Claude local settings
+.claude/settings.local.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+*.log

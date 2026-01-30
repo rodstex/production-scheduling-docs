@@ -1,0 +1,456 @@
+# Production Schedule Tool Fix Guide
+
+**Date:** 2026-01-13
+**Prepared for:** Analytics Engineering Team
+**Priority:** HIGH - Affects current week production scheduling
+**Status:** Root cause identified, fix validated and ready to execute
+
+---
+
+## Table of Contents
+
+1. [Executive Summary](#executive-summary)
+2. [Problem Statement](#problem-statement)
+3. [Root Cause Analysis](#root-cause-analysis)
+4. [Evidence & Validation](#evidence--validation)
+5. [Data Lineage](#data-lineage)
+6. [Fix Instructions](#fix-instructions)
+7. [Verification Steps](#verification-steps)
+8. [Prevention Recommendations](#prevention-recommendations)
+9. [Appendix: SQL Queries Used](#appendix-sql-queries-used)
+
+---
+
+## Executive Summary
+
+The Production Scheduling Tool (v4) is generating **incomplete schedules** for the week of Jan 12-18, 2026. The root cause is a **7-day gap in `stg2.ps_staffing_by_dt`** - the table has no data for Jan 12-18.
+
+**Impact:**
+- Production schedule output dropped to ~1/3 of normal during Jan 14-18
+- Manufacturing locations are receiving incomplete line assignments
+
+**Fix Required:**
+- INSERT 49 rows into `stg2.ps_staffing_by_dt` for the current week
+- Optionally re-run `run_production_schedule_v4` orchestration
+
+**Time to Fix:** ~5 minutes
+
+---
+
+## Problem Statement
+
+### What's Happening
+The `run_production_schedule_v4` Matillion job completes successfully but produces significantly fewer rows than expected for the current week (Jan 12-18).
+
+### Symptoms
+| Date | Expected Rows | Actual Rows | Status |
+|------|---------------|-------------|--------|
+| Jan 6-13 | ~2500 | ~2500 | ✅ Normal |
+| Jan 14-18 | ~2500 | ~800 | ❌ **~1/3 of normal** |
+| Jan 19-25 | ~1400 | ~1400 | ✅ Normal |
+
+### Root Cause (Summary)
+The `ps_automated_ranking_trans` transformation uses an **INNER JOIN** to `stg2.ps_staffing_by_dt`. Since this table has **no data for Jan 12-18**, the JOIN returns no matches, resulting in missing line assignments.
+
+---
+
+## Root Cause Analysis
+
+### The Data Gap
+
+The table `stg2.ps_staffing_by_dt` is missing 7 days of data:
+
+```
+Date Range    | Rows/Day | Status
+--------------|----------|--------
+Jan 1-11      | 6-7      | ✅ OK
+Jan 12-18     | 0        | ❌ MISSING (7 days)
+Jan 19-25     | 6-7      | ✅ OK
+```
+
+### Why the Gap Exists
+
+The `Initialize ps_staffing_by_dt_next_wk` job creates staffing data for **next week only**:
+
+```sql
+-- From: Initialize ps_staffing_by_dt_next_wk (Job ID: 5031290)
+WHERE date_trunc('week', dd.dt) = (date_trunc('week', current_timestamp at time zone '${timezone}') + interval '7 day')::date
+                                                                                                    ^^^^^^^^^^^^^^^^^^^
+                                                                                                    Creates NEXT week only
+```
+
+**Timeline:**
+| When Job Runs | Data Created For | Result |
+|---------------|------------------|--------|
+| Week of Dec 29 - Jan 4 | Jan 5-11 | ✅ Created |
+| **Week of Jan 5-11** | **Jan 12-18** | ❌ **FAILED/DID NOT RUN** |
+| Week of Jan 12 (today) | Jan 19-25 | ✅ Created |
+
+The job either failed or did not run during the week of Jan 5-11, creating a 7-day gap for the current week.
+
+### The Failing JOIN
+
+In `ps_automated_ranking_trans` (file: `0149_ps_automated_ranking_trans_SQL_0.sql`), lines 101-103:
+
+```sql
+join ${stg2_schema}.ps_staffing_by_dt pl
+    on pl.dt = fmn.inserted_dt_utc::date
+    and pl.mapped_manufacturing_location = mdch.mapped_manufacturing_location
+    and pl.grouped_line_type = 'Automated'
+```
+
+**This is an INNER JOIN.** If `ps_staffing_by_dt` has no rows for the target date, the entire result set for that date is empty.
+
+---
+
+## Evidence & Validation
+
+### Evidence 1: Data Gap Confirmed
+
+**Query:**
+```sql
+SELECT dt, COUNT(*) as row_count
+FROM stg2.ps_staffing_by_dt
+WHERE dt >= '2026-01-06' AND dt <= '2026-01-25'
+GROUP BY dt ORDER BY dt;
+```
+
+**Result:**
+```
+dt          | row_count
+------------|----------
+2026-01-06  | 7
+2026-01-07  | 7
+2026-01-08  | 7
+2026-01-09  | 6
+2026-01-10  | 6
+2026-01-11  | 6
+            |           ← GAP: Jan 12-18 MISSING
+2026-01-19  | 7
+2026-01-20  | 7
+2026-01-21  | 7
+2026-01-22  | 7
+2026-01-23  | 6
+2026-01-24  | 6
+2026-01-25  | 6
+```
+
+### Evidence 2: Source Data is Available
+
+The problem is NOT missing Google Sheets data. The source table has current data:
+
+**Query:**
+```sql
+SELECT is_selected_dt, COUNT(*) as cnt, MAX(inserted_dt_utc) as last_inserted
+FROM stg2.ps_staff_by_day_history
+GROUP BY 1;
+```
+
+**Result:**
+```
+is_selected_dt | cnt  | last_inserted
+---------------|------|---------------------------
+false          | 7007 | 2026-01-13 15:00:09 UTC
+true           | 49   | 2026-01-13 17:00:07 UTC  ← Current snapshot exists
+```
+
+### Evidence 3: Production Schedule Output Reduced
+
+**Query:**
+```sql
+SELECT DATE(inserted_dt_utc) as run_date, COUNT(*) as total_rows
+FROM dwh.fact_production_schedule
+WHERE inserted_dt_utc >= '2026-01-06'
+GROUP BY 1 ORDER BY 1;
+```
+
+**Result:**
+```
+run_date   | total_rows
+-----------|------------
+2026-01-06 | 2914       ← Normal
+2026-01-07 | 2795       ← Normal
+...
+2026-01-13 | 2120       ← Normal
+2026-01-14 | 782        ← REDUCED (~1/3)
+2026-01-15 | 814        ← REDUCED
+2026-01-16 | 823        ← REDUCED
+2026-01-17 | 854        ← REDUCED
+2026-01-18 | 878        ← REDUCED
+2026-01-19 | 1367       ← Recovering
+```
+
+### Evidence 4: Fix SQL Validated
+
+The fix SQL was tested with SELECT (no INSERT) and produces correct output:
+
+**Query:**
+```sql
+SELECT dd.dt, sbd.mapped_manufacturing_location, sbd.grouped_line_type, sbd.count_of_lines
+FROM dwh.dim_date dd
+LEFT JOIN stg2.ps_staff_by_day_history sbd ON sbd.is_selected_dt
+    AND sbd.day_of_week_int = date_part(dow, dd.dt)
+WHERE date_trunc('week', dd.dt) = date_trunc('week', current_timestamp at time zone 'America/New_York')::date
+    AND sbd.mapped_manufacturing_location IN ('New Kensington, PA', 'Ogden, UT', 'Talladega, AL (TMS)',
+        'Talladega, AL (Newberry)', 'Talladega, AL (Pope)', 'Talladega, AL (Woodland)');
+```
+
+**Result:** 49 rows for Jan 12-18 with correct staffing values from Google Sheets.
+
+---
+
+## Data Lineage
+
+The fix SQL does NOT create fake data. It uses the same logic as the production job, pulling from existing source tables:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           DATA FLOW                                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Google Sheets                                                               │
+│  (Staff By Day tab)                                                          │
+│         │                                                                    │
+│         ▼                                                                    │
+│  stg2.ps_staff_by_day_history                                               │
+│  ┌──────────────────────────────────────────────────────────┐               │
+│  │ Location: "New Kensington, PA"                           │               │
+│  │ Day: Monday (day_of_week_int = 1)                        │               │
+│  │ Line Type: "Non-Automated"                               │               │
+│  │ Count: 14  ◄─── This value comes from Google Sheets      │               │
+│  │ is_selected_dt: true                                     │               │
+│  └──────────────────────────────────────────────────────────┘               │
+│         │                                                                    │
+│         │  JOIN on day_of_week_int = date_part(dow, dt)                     │
+│         ▼                                                                    │
+│  dwh.dim_date                                                               │
+│  ┌──────────────────────────────────────────────────────────┐               │
+│  │ dt: 2026-01-13                                           │               │
+│  │ day_of_week_int: 1 (Monday)                              │               │
+│  └──────────────────────────────────────────────────────────┘               │
+│         │                                                                    │
+│         ▼                                                                    │
+│  stg2.ps_staffing_by_dt  (OUTPUT)                                           │
+│  ┌──────────────────────────────────────────────────────────┐               │
+│  │ dt: 2026-01-13                                           │               │
+│  │ mapped_manufacturing_location: "New Kensington, PA"      │               │
+│  │ grouped_line_type: "Non-Automated"                       │               │
+│  │ staffing_available: 14                                   │               │
+│  └──────────────────────────────────────────────────────────┘               │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Source Data Currently in ps_staff_by_day_history
+
+| Location | Day | Line Type | Lines (from Google Sheets) |
+|----------|-----|-----------|---------------------------|
+| New Kensington, PA | Sunday | Automated | 2 |
+| New Kensington, PA | Sunday | Non-Automated | 3 |
+| New Kensington, PA | Monday | Automated | 2 |
+| New Kensington, PA | Monday | Non-Automated | 14 |
+| New Kensington, PA | Tuesday | Automated | 2 |
+| New Kensington, PA | Tuesday | Non-Automated | 14 |
+| New Kensington, PA | Wednesday | Automated | 2 |
+| New Kensington, PA | Wednesday | Non-Automated | 14 |
+| New Kensington, PA | Thursday | Automated | 2 |
+| New Kensington, PA | Thursday | Non-Automated | 14 |
+| New Kensington, PA | Friday | Automated | 2 |
+| New Kensington, PA | Friday | Non-Automated | 3 |
+| New Kensington, PA | Saturday | Automated | 2 |
+| New Kensington, PA | Saturday | Non-Automated | 3 |
+| Ogden, UT | Sunday | Automated | 2 |
+| ... | ... | ... | ... |
+
+---
+
+## Fix Instructions
+
+### Option A: Direct SQL Fix (Recommended)
+
+**Step 1: Connect to Redshift**
+
+Use Redshift Query Editor v2 or psql with admin credentials.
+
+**Step 2: Verify current state (optional)**
+
+```sql
+-- Confirm the gap exists
+SELECT dt, COUNT(*) FROM stg2.ps_staffing_by_dt
+WHERE dt BETWEEN '2026-01-12' AND '2026-01-18'
+GROUP BY dt ORDER BY dt;
+-- Expected: 0 rows
+```
+
+**Step 3: Execute the INSERT**
+
+```sql
+INSERT INTO stg2.ps_staffing_by_dt (dt, mapped_manufacturing_location, grouped_line_type, staffing_available)
+SELECT
+    dd.dt,
+    sbd.mapped_manufacturing_location,
+    sbd.grouped_line_type,
+    sbd.count_of_lines as staffing_available
+FROM dwh.dim_date dd
+    LEFT JOIN stg2.ps_staff_by_day_history sbd
+        ON sbd.is_selected_dt
+        AND sbd.day_of_week_int = date_part(dow, dd.dt)
+WHERE date_trunc('week', dd.dt) = date_trunc('week', current_timestamp at time zone 'America/New_York')::date
+    AND sbd.mapped_manufacturing_location IN (
+        'New Kensington, PA',
+        'Ogden, UT',
+        'Talladega, AL (TMS)',
+        'Talladega, AL (Newberry)',
+        'Talladega, AL (Pope)',
+        'Talladega, AL (Woodland)'
+    );
+```
+
+**Expected Result:** 49 rows inserted.
+
+**Step 4: Verify the fix**
+
+```sql
+-- Confirm data now exists
+SELECT dt, COUNT(*) FROM stg2.ps_staffing_by_dt
+WHERE dt BETWEEN '2026-01-12' AND '2026-01-18'
+GROUP BY dt ORDER BY dt;
+-- Expected: 7 rows per day (49 total)
+```
+
+### Option B: Re-run Matillion Orchestration
+
+After applying Option A, optionally re-run `run_production_schedule_v4` in Matillion to regenerate the full production schedule with the corrected staffing data.
+
+1. Navigate to Matillion UI: https://matillion.filterbuy.com
+2. Open project: `filterbuy_dw`
+3. Navigate to: `dwh > orchestrations > run_production_schedule_v4`
+4. Click "Run" with environment: `prod_backfill`
+
+---
+
+## Verification Steps
+
+After applying the fix, verify success with these queries:
+
+### 1. Verify ps_staffing_by_dt has data
+
+```sql
+SELECT dt, mapped_manufacturing_location, grouped_line_type, staffing_available
+FROM stg2.ps_staffing_by_dt
+WHERE dt BETWEEN '2026-01-12' AND '2026-01-18'
+ORDER BY dt, mapped_manufacturing_location, grouped_line_type;
+```
+
+**Expected:** 49 rows with staffing values.
+
+### 2. Verify row count per day
+
+```sql
+SELECT dt, COUNT(*) as row_count
+FROM stg2.ps_staffing_by_dt
+WHERE dt >= '2026-01-06' AND dt <= '2026-01-25'
+GROUP BY dt ORDER BY dt;
+```
+
+**Expected:** 6-7 rows per day for ALL dates (no gaps).
+
+### 3. After re-running orchestration, verify fact_production_schedule
+
+```sql
+SELECT DATE(inserted_dt_utc) as run_date, COUNT(*) as total_rows
+FROM dwh.fact_production_schedule
+WHERE inserted_dt_utc >= '2026-01-12'
+GROUP BY 1 ORDER BY 1 DESC LIMIT 10;
+```
+
+**Expected:** Row counts should return to normal (~2000-2900 per day).
+
+---
+
+## Prevention Recommendations
+
+### 1. Add Monitoring Alert
+
+Create an alert that triggers when `ps_staffing_by_dt` has no data for the current week:
+
+```sql
+-- Alert query: Returns 1 if data is missing
+SELECT CASE
+    WHEN COUNT(*) = 0 THEN 1
+    ELSE 0
+END as alert_missing_staffing_data
+FROM stg2.ps_staffing_by_dt
+WHERE dt BETWEEN date_trunc('week', CURRENT_DATE)::date
+              AND (date_trunc('week', CURRENT_DATE) + interval '6 days')::date;
+```
+
+### 2. Investigate Job Failure
+
+Check Matillion Task History for failures during Jan 5-11:
+- Look for `Initialize ps_staffing_by_dt_next_wk` or `run_production_schedule_v4` errors
+- Multiple "Out of Memory Error" notices were observed in Matillion (Dec 4, Nov 28, Nov 21, etc.)
+
+### 3. Consider Adding Redundancy
+
+Modify the Initialize job to create data for BOTH current week AND next week, reducing impact of missed runs.
+
+---
+
+## Appendix: SQL Queries Used
+
+### A1: Check data gap in ps_staffing_by_dt
+
+```sql
+SELECT dt, COUNT(*) as row_count
+FROM stg2.ps_staffing_by_dt
+WHERE dt >= '2026-01-01'
+GROUP BY dt ORDER BY dt DESC;
+```
+
+### A2: Check source data availability
+
+```sql
+SELECT is_selected_dt, COUNT(*) as cnt, MIN(inserted_dt_utc), MAX(inserted_dt_utc)
+FROM stg2.ps_staff_by_day_history
+GROUP BY 1;
+```
+
+### A3: View current staffing snapshot from Google Sheets
+
+```sql
+SELECT mapped_manufacturing_location, day_of_week_name, grouped_line_type, count_of_lines
+FROM stg2.ps_staff_by_day_history
+WHERE is_selected_dt
+ORDER BY mapped_manufacturing_location, day_of_week_int, grouped_line_type;
+```
+
+### A4: Check fact_production_schedule output
+
+```sql
+SELECT DATE(inserted_dt_utc) as run_date, COUNT(*) as total_rows,
+       COUNT(CASE WHEN line_type IS NOT NULL THEN 1 END) as with_line_type
+FROM dwh.fact_production_schedule
+WHERE inserted_dt_utc >= '2026-01-01'
+GROUP BY 1 ORDER BY 1 DESC LIMIT 30;
+```
+
+### A5: Verify week boundaries
+
+```sql
+SELECT CURRENT_DATE as today,
+       date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE 'America/New_York')::date as current_week_start,
+       (date_trunc('week', CURRENT_TIMESTAMP AT TIME ZONE 'America/New_York') + interval '6 days')::date as current_week_end;
+```
+
+---
+
+## Contact
+
+- **Matillion TAM:** Kevin Kirkpatrick (kevin.kirkpatrick@matillion.com)
+- **Google Sheets Input:** https://docs.google.com/spreadsheets/d/1aBLKbfhf2k1R_gv-eWlq5opunWHlT6Fe-VbZVTeAlJ4
+- **Matillion UI:** https://matillion.filterbuy.com
+
+---
+
+*Document generated: 2026-01-13*
