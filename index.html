@@ -6,6 +6,112 @@
     <title>Production Scheduling Tool - Overview</title>
     <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
     <style>
+        /* Password Protection Overlay */
+        .password-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+
+        .password-overlay.hidden {
+            display: none;
+        }
+
+        .password-box {
+            background: white;
+            padding: 3rem;
+            border-radius: 16px;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        .password-box img {
+            width: 120px;
+            margin-bottom: 1.5rem;
+        }
+
+        .password-box h2 {
+            margin-bottom: 0.5rem;
+            color: #1f2937;
+        }
+
+        .password-box p {
+            color: #6b7280;
+            margin-bottom: 1.5rem;
+            font-size: 0.95rem;
+        }
+
+        .password-box input {
+            width: 100%;
+            padding: 0.875rem 1rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            transition: border-color 0.2s;
+        }
+
+        .password-box input:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+
+        .password-box input.error {
+            border-color: #ef4444;
+            animation: shake 0.5s ease-in-out;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+        }
+
+        .password-box button {
+            width: 100%;
+            padding: 0.875rem;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .password-box button:hover {
+            background: #2563eb;
+        }
+
+        .password-box .error-msg {
+            color: #ef4444;
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+            display: none;
+        }
+
+        .password-box .error-msg.visible {
+            display: block;
+        }
+
+        .main-content {
+            display: none;
+        }
+
+        .main-content.visible {
+            display: block;
+        }
+
         :root {
             --input-color: #3b82f6;
             --input-bg: #dbeafe;
@@ -758,6 +864,18 @@
     </style>
 </head>
 <body>
+    <!-- Password Protection -->
+    <div class="password-overlay" id="passwordOverlay">
+        <div class="password-box">
+            <h2>🔐 Filterbuy Internal</h2>
+            <p>Enter the password to access the Production Scheduling Tool documentation.</p>
+            <input type="password" id="passwordInput" placeholder="Enter password" onkeypress="if(event.key==='Enter')checkPassword()">
+            <button onclick="checkPassword()">Access Documentation</button>
+            <p class="error-msg" id="errorMsg">Incorrect password. Please try again.</p>
+        </div>
+    </div>
+
+    <div class="main-content" id="mainContent">
     <div class="container">
         <header>
             <h1>Production Scheduling Tool</h1>
@@ -1590,8 +1708,35 @@
             <p style="margin-top: 0.5rem; font-size: 0.8rem;">For technical details, see: <code>thoughts/handoffs/</code> in the production-scheduling-tool repository</p>
         </footer>
     </div>
+    </div> <!-- Close main-content -->
 
     <script>
+        // Password Protection
+        const CORRECT_PASSWORD = 'filterbuy';
+
+        // Check if already authenticated this session
+        if (sessionStorage.getItem('authenticated') === 'true') {
+            document.getElementById('passwordOverlay').classList.add('hidden');
+            document.getElementById('mainContent').classList.add('visible');
+        }
+
+        function checkPassword() {
+            const input = document.getElementById('passwordInput');
+            const errorMsg = document.getElementById('errorMsg');
+
+            if (input.value === CORRECT_PASSWORD) {
+                sessionStorage.setItem('authenticated', 'true');
+                document.getElementById('passwordOverlay').classList.add('hidden');
+                document.getElementById('mainContent').classList.add('visible');
+            } else {
+                input.classList.add('error');
+                errorMsg.classList.add('visible');
+                setTimeout(() => {
+                    input.classList.remove('error');
+                }, 500);
+            }
+        }
+
         // Initialize Mermaid
         mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
 
